@@ -1,65 +1,89 @@
-import Image from "next/image";
+"use client"
 
-export default function Home() {
+import { useState, useEffect, useCallback } from "react";
+import "./styles/homeHero.css";
+
+// Import Custom Modular Components
+import Cursor from "./components/Cursor";
+import Nav from "./components/Nav";
+import Hero from "./components/Hero";
+import Marquee from "./components/Marquee";
+import Conditions from "./components/Condition";
+import BigText from "./components/BigText";
+import StatBlock from "./components/StatBlock";
+import Process from "./components/Process";
+import CTA from "./components/CTA";
+
+const STATS = [
+  { number: 94, suffix: "% accuracy", label: "in skin condition identification vs. clinical dermatologist benchmark" },
+  { number: 2,  suffix: "M+ users",   label: "across India tracking their skin transformation" },
+  { number: 84, suffix: "% improve",  label: "their primary skin concern within 8 weeks" },
+  { number: 12, suffix: "conditions", label: "from acne to hair fall, covered by our diagnostic engine" },
+];
+
+export default function App() {
+  const [cursorPos, setCursorPos] = useState({ x: -100, y: -100 });
+  const [cursorExpanded, setCursorExpanded] = useState(false);
+  const [scrollY, setScrollY] = useState(0);
+
+  useEffect(() => {
+    const style = document.createElement("style");
+    document.head.appendChild(style);
+    document.body.style.background = "#08081A";
+    document.body.style.color = "#F5F0EB";
+    document.body.style.fontFamily = "'Space Grotesk', sans-serif";
+    return () => { document.head.removeChild(style); };
+  }, []);
+
+  useEffect(() => {
+    const onMove = e => setCursorPos({ x: e.clientX, y: e.clientY });
+    const onScroll = () => setScrollY(window.scrollY);
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => { window.removeEventListener("mousemove", onMove); window.removeEventListener("scroll", onScroll); };
+  }, []);
+
+  const onHover = useCallback(v => setCursorExpanded(v), []);
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.js file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
-      </main>
+    <div style={{ minHeight: "100vh", background: "var(--navy)" }}>
+      <Cursor pos={cursorPos} expanded={cursorExpanded} />
+      <Nav onHoverLink={onHover} />
+      <Hero onHover={onHover} />
+      <Marquee />
+      <Conditions onHover={onHover} />
+      <BigText scrollY={scrollY} />
+
+      {/* Stats Section */}
+      <section style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 2, padding: "0 0" }}>
+        {STATS.map((s, i) => <StatBlock key={i} {...s} index={i} />)}
+      </section>
+
+      <Process />
+      <CTA onHover={onHover} />
+
+      {/* Footer */}
+      <footer style={{
+        padding: "60px 48px",
+        borderTop: "1px solid rgba(255,255,255,0.06)",
+        display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 24,
+        background: "var(--navy)",
+      }}>
+        <div style={{
+          fontFamily: "'Syne', sans-serif", fontSize: 24, fontWeight: 800,
+          background: "linear-gradient(135deg, var(--rose), var(--violet))",
+          WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent", backgroundClip: "text",
+        }}>DERMA</div>
+        <ul style={{ display: "flex", gap: 32, listStyle: "none", flexWrap: "wrap" }}>
+          {["Privacy","Terms","Blog","Careers","Contact"].map(l => (
+            <li key={l}><a href="#" style={{ color: "rgba(245,240,235,0.4)", textDecoration: "none", fontSize: 14, fontFamily: "'Space Grotesk', sans-serif", transition: "color 0.2s" }}
+              onMouseOver={e => e.currentTarget.style.color = "var(--cream)"}
+              onMouseOut={e => e.currentTarget.style.color = "rgba(245,240,235,0.4)"}
+            >{l}</a></li>
+          ))}
+        </ul>
+        <span style={{ color: "rgba(245,240,235,0.25)", fontSize: 13, fontFamily: "'Space Grotesk', sans-serif" }}>© 2026 Derma Inc.</span>
+      </footer>
     </div>
   );
 }

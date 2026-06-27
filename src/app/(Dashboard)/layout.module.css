@@ -1,0 +1,93 @@
+/* ─── Sidebar Nav Links ─────────────────────────────────────── */
+.lnavLink {
+  position: relative;
+  display: flex !important;
+  align-items: center !important;
+  gap: 10px !important;
+  padding: 9px 12px !important;
+  border-radius: 8px;
+  text-decoration: none !important;
+  font-size: 13.5px !important;
+  font-weight: 500 !important;
+  color: rgba(245, 240, 235, 0.5) !important;
+  background: transparent !important;
+  transition: all 0.15s;
+}
+
+.lnavLink:hover {
+  color: rgba(245, 240, 235, 0.8) !important;
+  background: rgba(255, 255, 255, 0.05) !important;
+}
+
+.lnavLinkActive {
+  color: #f5f0eb !important;
+  background: rgba(255, 62, 127, 0.12) !important;
+}
+
+.lnavText {
+  font-size: 13.5px !important;
+  font-weight: 500 !important;
+  color: inherit !important;
+  display: inline !important;
+  padding: 0 !important;
+  margin: 0 !important;
+}
+
+.lnavIconWrapper {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  flex-shrink: 0;
+}
+
+.lnavIconWrapper svg {
+  display: block !important;
+  width: 16px !important;
+  height: 16px !important;
+}
+
+/* ─── Layout ────────────────────────────────────────────────── */
+.bodyContent {
+  margin-left: 220px;
+}
+
+/* ─── Top Nav ───────────────────────────────────────────────── */
+.mobMenuBtn {
+  display: none !important;
+}
+
+/* ─── Sidebar ───────────────────────────────────────────────── */
+.sidebar {
+  transform: translateX(0);
+}
+
+/* ─── Responsive ────────────────────────────────────────────── */
+@media (max-width: 768px) {
+  .bodyContent {
+    margin-left: 0 !important;
+  }
+  .mobMenuBtn {
+    display: flex !important;
+  }
+  .sidebar {
+    transform: translateX(-100%);
+  }
+  .sidebarOpen {
+    transform: translateX(0) !important;
+  }
+  .sidebarCloseBtn {
+    display: flex !important;
+  }
+  .navSessionBadge {
+    display: none !important;
+  }
+  .navUserNameText {
+    display: none !important;
+  }
+}
+
+@media (max-width: 400px) {
+  .navBellBtn {
+    display: none !important;
+  }
+}
