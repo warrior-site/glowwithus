@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import { connectToDatabase } from "@/lib/db";
+import { verifyToken } from "@/lib/auth";
+import { validateImageBase64 } from "@/lib/validation";
 import { evaluateUserAccess } from "@/lib/checkAccess";
 import { uploadToImageKit } from "@/lib/imagekit";
 import { analyzeSkinWithAI } from "@/lib/gemini";
@@ -9,19 +11,33 @@ import User from "@/lib/models/User";
 export async function POST(request) {
   try {
     await connectToDatabase();
-    const { userId, imageBase64 } = await request.json();
+    
+    // 1. Extract userId from JWT token (NEVER trust frontend)
+    const token = request.cookies.get("token")?.value;
+    const session = verifyToken(token);
+    if (!session) {
+      return NextResponse.json({ error: "Unauthorized - please login" }, { status: 401 });
+    }
+    
+    const userId = session.userId;
+    const { imageBase64 } = await request.json();
 
-    if (!userId || !imageBase64) {
-      return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
+    // 2. Validate image input
+    const imageValidation = validateImageBase64(imageBase64);
+    if (!imageValidation.valid) {
+      return NextResponse.json(
+        { success: false, error: imageValidation.error },
+        { status: 400 }
+      );
     }
 
-    // 1. Fetch user status profile
+    // 3. Fetch user status profile
     const user = await User.findById(userId);
     if (!user) {
       return NextResponse.json({ error: "User profile missing" }, { status: 404 });
     }
 
-    // 2. Evaluate if they have permission (Free, Paid, or Affiliate)
+    // 4. Evaluate if they have permission (Free, Paid, or Affiliate)
     const accessStatus = evaluateUserAccess(user);
     if (!accessStatus.allowed) {
       return NextResponse.json({ 
@@ -30,15 +46,6 @@ export async function POST(request) {
         requiresUpgrade: true 
       }, { status: 403 });
     }
-
-    // 3. Clean base64 and upload raw file to ImageKit
-    const cleanBase64 = imageBase64.replace(/^data:image\/\w+;base64,/, "");
-    const uploadResult = await uploadToImageKit(cleanBase64, `scan-${userId}-${Date.now()}.jpg`);
-    
-    // 4. Execute Structured AI pipeline
-    const aiResults = await analyzeSkinWithAI(cleanBase64, user.skin_problem);
-
-    // 5. Map and sanitize JSON data arrays into strict Mongoose enum formats
     const mappedConcerns = (aiResults.detected_problems || []).map((prob) => {
       // Direct sanitization layer to protect against schema enum crashes
       let dynamicType = prob.issue_type?.toLowerCase() || "";
@@ -103,7 +110,14 @@ export async function POST(request) {
     });
 
   } catch (error) {
-    console.error("API Pipeline Core Error:", error);
-    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+    console.error("Skin analysis error:", error);
+    return NextResponse.json(
+      { 
+        success: false,
+        message: error.message || "Skin analysis failed",
+        error: process.env.NODE_ENV === "development" ? error.message : undefined
+      },
+      { status: 500 }
+    );
   }
 }

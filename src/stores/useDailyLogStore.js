@@ -43,14 +43,14 @@ export const useDailyLogStore = create((set, get) => ({
   }
 },
 
-  saveDailyLog: async (payload) => {
+  saveDailyLog: async (payload,streak) => {
     set({ isSaving: true, error: null });
 
     try {
       const res = await fetch("/api/logs", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
+        body: JSON.stringify({ ...payload, streak }),
       });
 
       const data = await res.json();

@@ -40,9 +40,12 @@ const UserSchema = new mongoose.Schema({
   location: { type: String, default: "" },
   bio: { type: String, default: "" },
   avatar_url: { type: String, default: "" },
+  age: { type: Number, default: null },
+  gender: { type: String, enum: ["male", "female", "other"], default: "male" },
   
   // Core Skin Profile Elements
-  skin_type: { type: String, enum: ["Combination", "Oily", "Dry", "Normal"], default: "Combination" },
+  skin_type: { type: String, enum: ["combination", "oily", "dry", "normal","sensitive"], default: "combination" },
+  skin_problem: { type: String, default: "acne" }, // Primary skin concern: acne, hyperpigmentation, wrinkles, etc.
   fitzpatrick_type: { type: String, enum: ["Type I", "Type II", "Type III", "Type IV", "Type V", "Type VI"], default: "Type III" },
   primary_concerns: { type: [String], default: [] }, // Stores multiple concerns like ["Hyperpigmentation", "Fine lines"]
   known_sensitivities: { type: String, default: "" },
@@ -54,7 +57,7 @@ const UserSchema = new mongoose.Schema({
   total_days_logged: { type: Number, default: 0 },
 
   // Access Control & Affiliates
-  is_premium_user: { type: Boolean, default: false },
+  is_premium_user: { type: Boolean, default: false }, 
   purchase_verified: { type: Boolean, default: false },
   premium_expires_at: { type: Date, default: null },
   free_scans_remaining: { type: Number, default: 3 },
@@ -70,4 +73,4 @@ const UserSchema = new mongoose.Schema({
   created_at: { type: Date, default: Date.now },
 });
 
-export default mongoose.models.User || mongoose.model("User", UserSchema);
+export default mongoose.models.User || mongoose.model("User", UserSchema); 

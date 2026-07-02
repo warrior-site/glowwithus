@@ -15,8 +15,6 @@ export async function GET(request) {
 
     const { searchParams } = new URL(request.url);
     const dateParam = searchParams.get("date"); // Expected format: YYYY-MM-DD
-    const userId = searchParams.get("userId")
-
     if (!dateParam) {
       return NextResponse.json({ error: "Date parameter is required" }, { status: 400 });
     }
@@ -26,7 +24,7 @@ export async function GET(request) {
     targetDate.setHours(0, 0, 0, 0);
 
     const log = await DailyLog.findOne({
-      user_id: userId,
+      user_id: session.userId,
       log_date: targetDate,
     });
 
@@ -56,15 +54,19 @@ export async function POST(request) {
       hydration_level, 
       breakout_count, 
       redness_level, 
-      notes ,
-      userId
+      notes
     } = body;
+    const streak = body.streak || 0; // Optional: Pass streak from client if needed
+    const user = await User.findOne({ _id: session.userId });
+    user.total_days_logged = (user.total_days_logged || 0) + 1;
+    user.streak_count = streak;
+    user.save();
 
     const targetDate = log_date ? new Date(log_date) : new Date();
     targetDate.setHours(0, 0, 0, 0);
 
     // Check if entry already exists for the requested date
-    let log = await DailyLog.findOne({ user_id:userId, log_date: targetDate });
+    let log = await DailyLog.findOne({ user_id: session.userId, log_date: targetDate });
 
     let isNewLog = false;
     if (!log) {
@@ -125,7 +127,14 @@ export async function POST(request) {
 
     return NextResponse.json({ success: true, data: log });
   } catch (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
-    console.log(error)
+    console.error("Daily log error:", error);
+    return NextResponse.json(
+      { 
+        success: false,
+        message: error.message || "Failed to save daily log",
+        error: process.env.NODE_ENV === "development" ? error.message : undefined
+      },
+      { status: 500 }
+    );
   }
 }

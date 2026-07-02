@@ -140,7 +140,7 @@ const NAV_SECTIONS = [
     ],
   },
   {
-    label: 'Account',
+    label: 'Account || TO BE MADE YET ||',
     links: [
       { label: 'Team',            href: '/team',                       icon: Icon.team      },
       { label: 'API Keys',        href: '/settings/api',               icon: Icon.api       },

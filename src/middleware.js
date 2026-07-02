@@ -1,19 +1,19 @@
 import { NextResponse } from "next/server";
 
 export function middleware(req) {
-  const token = req.cookies.get("token"); // your auth cookie
+  const token = req.cookies.get("token");
   const { pathname } = req.nextUrl;
 
-  // ✅ allow public routes
+  // ✅ allow public routes + ALL APIs
   if (
     pathname === "/" ||
     pathname.startsWith("/auth") ||
-    pathname.startsWith("/api/auth")
+    pathname.startsWith("/api")
   ) {
     return NextResponse.next();
   }
 
-  // ❌ block everything else if not logged in
+  // ❌ protect pages only
   if (!token) {
     return NextResponse.redirect(new URL("/auth", req.url));
   }
@@ -21,7 +21,6 @@ export function middleware(req) {
   return NextResponse.next();
 }
 
-// ✅ apply to ALL routes except static files
 export const config = {
   matcher: ["/((?!_next|favicon.ico).*)"],
 };

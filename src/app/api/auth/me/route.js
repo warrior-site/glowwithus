@@ -24,10 +24,21 @@ export async function GET(request) {
 
     return NextResponse.json({
       authenticated: true,
-      user
+      user: {
+        ...user.toObject(),
+        id: user._id.toString()
+      }
     }, { status: 200 }); 
 
   } catch (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    console.error("Auth me error:", error);
+    return NextResponse.json(
+      { 
+        authenticated: false,
+        message: error.message || "Failed to fetch user data",
+        error: process.env.NODE_ENV === "development" ? error.message : undefined
+      },
+      { status: 500 }
+    );
   }
 }

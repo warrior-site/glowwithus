@@ -2,11 +2,13 @@ import { NextResponse } from "next/server";
 import { connectToDatabase } from "@/lib/db";
 import User from "@/lib/models/User";
 import { createToken } from "@/lib/auth";
+import { validateEmail, validatePassword, validateName, checkRateLimit } from "@/lib/validation";
 import bcrypt from "bcryptjs";
 
 export async function POST(request) {
   try {
     await connectToDatabase();
+    
 
     const {
       email,
@@ -14,65 +16,95 @@ export async function POST(request) {
       full_name,
       skin_problem,
       skin_type,
-      affiliate_order_id, // e.g., "AMZN-123456" 
-      affiliate_receipt_url,
-      avatarUrl // e.g., Image URL from ImageKit proof upload
+      avatarUrl,
+      age,
+      gender,
     } = await request.json();
+    console.log("Incoming body:", {
+  email,
+  password,
+  full_name,
+  skin_problem,
+  skin_type,
+  avatarUrl,
+  age,
+  gender,
+});
 
     if (!email || !password) {
-      return NextResponse.json({ error: "Email and password are required" }, { status: 400 });
+      return NextResponse.json(
+        { success: false, message: "Email and password required" },
+        { status: 400 }
+      );
     }
 
-    // 1. Check if email is already taken
+    if (!validateEmail(email)) {
+      return NextResponse.json(
+        { success: false, message: "Invalid email" },
+        { status: 400 }
+      );
+    }
+
+    const passwordValidation = validatePassword(password);
+    if (!passwordValidation.valid) {
+      return NextResponse.json(
+        { success: false, message: passwordValidation.error },
+        { status: 400 }
+      );
+    }
+
     const existingUser = await User.findOne({ email: email.toLowerCase() });
     if (existingUser) {
-      return NextResponse.json({ error: "Email already registered" }, { status: 400 });
+      return NextResponse.json(
+        { success: false, message: "Email already exists" },
+        { status: 400 }
+      );
     }
 
-    // 2. Hash password securely
     const hashedPassword = await bcrypt.hash(password, 12);
 
-    // 3. Prepare initial verification state if they submitted proof
-    const submittedProof = !!(affiliate_order_id || affiliate_receipt_url);
-
-    // 4. Create User document
     const newUser = await User.create({
       email: email.toLowerCase(),
       password: hashedPassword,
       full_name: full_name || "",
       skin_problem: skin_problem || "acne",
-      skin_type: skin_type || "combination",
-      avatar_url: avatarUrl || "", // Matches schema string perfectly!
+      skin_type: skin_type ? skin_type.toLowerCase() : "combination",
+      avatar_url: avatarUrl || "",
+      age: age ? Number(age) : null,
+      gender: gender || "male",
 
-      // --- MATCHING THE FLATTENED SCHEMA STRUCTURING ---
-      affiliate_order_id: affiliate_order_id || "",
-      affiliate_receipt_url: affiliate_receipt_url || "",
-
-      // Keep access controls aligned with schema defaults
       purchase_verified: false,
       is_premium_user: false,
-      role: "user"
+      role: "user",
     });
 
-    // 5. Create secure JWT session
-    const token = createToken({ userId: newUser._id, role: newUser.role });
+    const token = createToken({ userId: newUser._id });
 
-    const response = NextResponse.json({
-      success: true,
-      message: "Registration successful",
-      user: { id: newUser._id, email: newUser.email, full_name: newUser.full_name }
-    }, { status: 201 });
+    const res = NextResponse.json(
+      {
+        success: true,
+        user: {
+          id: newUser._id,
+          email: newUser.email,
+          full_name: newUser.full_name,
+        },
+      },
+      { status: 201 }
+    );
 
-    // 6. Inject secure HTTP-Only cookie
-    response.cookies.set("token", token, {
+    res.cookies.set("token", token, {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
-      maxAge: 60 * 60 * 24 * 7, // 7 Days
+      maxAge: 60 * 60 * 24 * 7,
       path: "/",
     });
 
-    return response;
-  } catch (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return res;
+  } catch (err) {
+    console.log(err)
+    return NextResponse.json(
+      { success: false, message: err.message },
+      { status: 500 }
+    );
   }
 }

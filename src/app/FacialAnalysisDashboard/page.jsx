@@ -96,6 +96,7 @@ export default function DermAI() {
   /* previewUrl: local blob URL shown instantly before the CDN URL is ready */
   const [previewUrl,  setPreviewUrl]  = useState(null);
   const [isUploading, setIsUploading] = useState(false);
+  const [showBanner, setShowBanner] = useState(false);
 
   const {
     analysisData: rawScan,
@@ -109,9 +110,16 @@ export default function DermAI() {
   useEffect(() => {
     LOG("mount — currentUser:", currentUser?._id ?? "none");
     if (currentUser?._id) {
-      fetchAnalysisData(currentUser._id);
+      fetchAnalysisData(currentUser._id); 
     }
+     if (!isLoading && currentUser?._id && !rawScan) {
+    setShowBanner(true);
+  } else {
+    setShowBanner(false);
+  }
+
   }, [currentUser?._id, fetchAnalysisData]);
+ 
 
   /* ── FIX: clear previewUrl only after rawScan has a CDN image_url ──
      This prevents the blank flash that happened when previewUrl was cleared
@@ -303,6 +311,16 @@ export default function DermAI() {
   ───────────────────────────────────────────── */
   return (
     <div className="shell" style={{ display: "block", minHeight: "100vh" }}>
+      {showBanner && (
+              <Banner
+                banner={{
+                  message:
+                    "Do Profile Analysis so our system understands your skin better",
+                  action_type: "navigate",
+                  action_payload: { route: "/facial-analysis" },
+                }}
+              />
+            )}
 
       <input
         type="file"

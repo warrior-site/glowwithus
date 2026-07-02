@@ -12,7 +12,7 @@ export const useFacialAnalysisStore = create((set, get) => ({
   // Fetch latest scan from /api/get-analyze
   fetchAnalysisData: async (userId) => {
     if (!userId) {
-      ERR("fetchAnalysisData called with no userId — aborting");
+      ERR("fetchAnalysisData called with no userId — aborting"); 
       return;
     }
 
@@ -24,7 +24,7 @@ export const useFacialAnalysisStore = create((set, get) => ({
       LOG("GET", url);
 
       const response = await fetch(url);
-      LOG("GET response status:", response.status, response.statusText);
+      LOG("GET response status:", response.status, response.statusText); 
 
       const result = await response.json();
       LOG("GET response body:", result);

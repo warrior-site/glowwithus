@@ -25,44 +25,53 @@ const todayLabel = () =>
 
 const severity = (v) => (v >= 60 ? "High" : v >= 30 ? "Moderate" : "Mild");
 
+/* ── initial-load smoothing ── */
+const MIN_HISTORY_LOAD_MS = 1100; // avoid a jarring instant flash on fast connections
+const HISTORY_LOADING_MESSAGES = [
+  "Connecting to your account…",
+  "Looking up scan history…",
+  "Fetching analysis records…",
+  "Preparing your dashboard…",
+];
+
 /* ── normalise one raw scan document into dashboard-ready shape ── */
 function normaliseScan(rawScan, currentUser) {
   if (!rawScan) return null;
   return {
-    _id:            rawScan._id,
+    _id: rawScan._id,
     analysisNumber: rawScan._id?.slice(-4).toUpperCase() ?? "—",
-    date:           fmtDate(rawScan.createdAt),
-    dateShort:      fmtShort(rawScan.createdAt),
-    imageUrl:       rawScan.image_url ?? "",
-    overallScore:   rawScan.overall_health_score ?? 0,
-    verdict:        (rawScan.overall_health_score ?? 0) > 75 ? "Excellent Condition" : "Good Condition",
-    verdictDesc:    rawScan.ai_summary ?? "",
-    estimatedAge:   rawScan.ai_metrics?.skin_age_estimate ?? currentUser?.age ?? "—",
+    date: fmtDate(rawScan.createdAt),
+    dateShort: fmtShort(rawScan.createdAt),
+    imageUrl: rawScan.image_url ?? "",
+    overallScore: rawScan.overall_health_score ?? 0,
+    verdict: (rawScan.overall_health_score ?? 0) > 75 ? "Excellent Condition" : "Good Condition",
+    verdictDesc: rawScan.ai_summary ?? "",
+    estimatedAge: rawScan.ai_metrics?.skin_age_estimate ?? currentUser?.age ?? "—",
     metrics: {
-      acne:         rawScan.ai_metrics?.acne_score         ?? 0,
-      wrinkle:      rawScan.ai_metrics?.wrinkle_score      ?? 0,
+      acne: rawScan.ai_metrics?.acne_score ?? 0,
+      wrinkle: rawScan.ai_metrics?.wrinkle_score ?? 0,
       pigmentation: rawScan.ai_metrics?.pigmentation_score ?? 0,
-      redness:      rawScan.ai_metrics?.redness_score      ?? 0,
-      pores:        rawScan.ai_metrics?.pores_score        ?? 0,
-      darkCircles:  rawScan.ai_metrics?.dark_circles_score ?? 0,
+      redness: rawScan.ai_metrics?.redness_score ?? 0,
+      pores: rawScan.ai_metrics?.pores_score ?? 0,
+      darkCircles: rawScan.ai_metrics?.dark_circles_score ?? 0,
     },
     detectedConcerns: (rawScan.detected_concerns ?? []).map((c, idx) => {
-      const top    = c.location_box?.top    ?? 0;
-      const left   = c.location_box?.left   ?? 0;
-      const width  = (c.location_box?.right  ?? 0) - left;
+      const top = c.location_box?.top ?? 0;
+      const left = c.location_box?.left ?? 0;
+      const width = (c.location_box?.right ?? 0) - left;
       const height = (c.location_box?.bottom ?? 0) - top;
       return {
-        id:         c._id ?? idx,
-        type:       c.concern_type ?? "",
-        name:       (c.concern_type ?? "UNKNOWN").toUpperCase().replace("_", " "),
+        id: c._id ?? idx,
+        type: c.concern_type ?? "",
+        name: (c.concern_type ?? "UNKNOWN").toUpperCase().replace("_", " "),
         confidence: Math.round((c.confidence ?? 0) * 100),
-        location:   c.concern_location ?? "",
-        styles:     { top: `${top}%`, left: `${left}%`, width: `${width}%`, height: `${height}%` },
+        location: c.concern_location ?? "",
+        styles: { top: `${top}%`, left: `${left}%`, width: `${width}%`, height: `${height}%` },
       };
     }),
     recommendations: rawScan.ai_recommendations ?? [],
-    aiSummary:       rawScan.ai_summary ?? "",
-    skinHealthTags:  (rawScan.detected_concerns ?? []).map((c) => c.concern_type).filter(Boolean),
+    aiSummary: rawScan.ai_summary ?? "",
+    skinHealthTags: (rawScan.detected_concerns ?? []).map((c) => c.concern_type).filter(Boolean),
   };
 }
 
@@ -86,9 +95,9 @@ function ScanningOverlay() {
           animation: "scanLine 2s ease-in-out infinite",
         }} />
       </div>
-      <div className="cornerMarker cornerTopLeft"     style={{ borderColor: "#FF3E7F", boxShadow: "0 0 8px #FF3E7F" }} />
-      <div className="cornerMarker cornerTopRight"    style={{ borderColor: "#FF3E7F", boxShadow: "0 0 8px #FF3E7F" }} />
-      <div className="cornerMarker cornerBottomLeft"  style={{ borderColor: "#7B5EA7", boxShadow: "0 0 8px #7B5EA7" }} />
+      <div className="cornerMarker cornerTopLeft" style={{ borderColor: "#FF3E7F", boxShadow: "0 0 8px #FF3E7F" }} />
+      <div className="cornerMarker cornerTopRight" style={{ borderColor: "#FF3E7F", boxShadow: "0 0 8px #FF3E7F" }} />
+      <div className="cornerMarker cornerBottomLeft" style={{ borderColor: "#7B5EA7", boxShadow: "0 0 8px #7B5EA7" }} />
       <div className="cornerMarker cornerBottomRight" style={{ borderColor: "#7B5EA7", boxShadow: "0 0 8px #7B5EA7" }} />
       <div style={{
         background: "rgba(255,62,127,0.15)", border: "1px solid rgba(255,62,127,0.4)",
@@ -193,15 +202,18 @@ function HistoryThumb({ scan, isActive, onClick }) {
    MAIN COMPONENT
 ───────────────────────────────────────────── */
 export default function DermAI() {
-  const { currentUser }  = useUserStore();
-  const fileInputRef     = useRef(null);
+  const { currentUser } = useUserStore();
+  const fileInputRef = useRef(null);
 
   /* local state */
-  const [previewUrl,   setPreviewUrl]   = useState(null);   // blob URL while uploading
-  const [isUploading,  setIsUploading]  = useState(false);
-  const [scanHistory,  setScanHistory]  = useState([]);     // all fetched scans, newest first
-  const [selectedId,   setSelectedId]   = useState(null);   // which scan is being viewed
+  const [previewUrl, setPreviewUrl] = useState(null);   // blob URL while uploading
+  const [isUploading, setIsUploading] = useState(false);
+  const [scanHistory, setScanHistory] = useState([]);     // all fetched scans, newest first
+  const [selectedId, setSelectedId] = useState(null);   // which scan is being viewed
   const [historyError, setHistoryError] = useState(null);
+  const [historyLoading, setHistoryLoading] = useState(true); // true until first history fetch settles
+  const [loadingMsgIdx, setLoadingMsgIdx] = useState(0);
+  const isFirstHistoryLoad = useRef(true);
 
   const {
     analysisData: latestRawScan,  // most recent scan from store (after new upload)
@@ -215,9 +227,11 @@ export default function DermAI() {
   const fetchHistory = useCallback(async (userId) => {
     if (!userId) return;
     setHistoryError(null);
+    const startedAt = Date.now();
+    const isFirstLoad = isFirstHistoryLoad.current;
     try {
       LOG("fetchHistory →", userId);
-      const res  = await fetch(`/api/facial-analysis/history?userId=${userId}`);
+      const res = await fetch(`/api/facial-analysis/history?userId=${userId}`);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
       /* data should be array of raw scan documents, newest first */
@@ -237,6 +251,19 @@ export default function DermAI() {
       ERR("fetchHistory error:", e);
       setHistoryError(e.message);
       /* Fallback: use the single scan from the store if history endpoint fails */
+    } finally {
+      /* On the very first load, hold the loading screen for a minimum
+         duration so it never flashes/blinks on fast connections — feels
+         intentional rather than jumpy. Subsequent (background) refreshes
+         resolve immediately since the dashboard is already visible. */
+      if (isFirstLoad) {
+        isFirstHistoryLoad.current = false;
+        const elapsed = Date.now() - startedAt;
+        const remaining = Math.max(0, MIN_HISTORY_LOAD_MS - elapsed);
+        setTimeout(() => setHistoryLoading(false), remaining);
+      } else {
+        setHistoryLoading(false);
+      }
     }
   }, [currentUser, selectedId]);
 
@@ -247,6 +274,14 @@ export default function DermAI() {
     fetchAnalysisData(currentUser._id);
     fetchHistory(currentUser._id);
   }, [currentUser?._id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  /* ── bugfix: don't spin forever if currentUser never resolves
+     (e.g. auth still hydrating / user genuinely signed out) ── */
+  useEffect(() => {
+    if (currentUser?._id) return;
+    const timeout = setTimeout(() => setHistoryLoading(false), 4000);
+    return () => clearTimeout(timeout);
+  }, [currentUser?._id]);
 
   /* ── when a fresh scan lands in the store, merge it into history ── */
   useEffect(() => {
@@ -261,6 +296,16 @@ export default function DermAI() {
     });
     setSelectedId(latestRawScan._id);
   }, [latestRawScan?._id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  /* ── cycle the "looking for history…" status messages while loading ── */
+  useEffect(() => {
+    if (!historyLoading) return;
+    setLoadingMsgIdx(0);
+    const id = setInterval(() => {
+      setLoadingMsgIdx((i) => (i + 1) % HISTORY_LOADING_MESSAGES.length);
+    }, 550);
+    return () => clearInterval(id);
+  }, [historyLoading]);
 
   /* ── release blob URL once CDN URL is available ── */
   useEffect(() => {
@@ -278,7 +323,7 @@ export default function DermAI() {
 
   /* is the selected scan the latest one (could be freshly uploading) */
   const isLatestSelected = !selectedId || selectedId === scanHistory[0]?._id;
-  const isBusy           = (isUploading || isLoading) && isLatestSelected;
+  const isBusy = (isUploading || isLoading) && isLatestSelected;
 
   /* ── file processing ── */
   const processFile = (file) => {
@@ -326,8 +371,8 @@ export default function DermAI() {
     e.target.value = "";
   };
   const handleDragOver = (e) => e.preventDefault();
-  const handleDrop     = (e) => { e.preventDefault(); processFile(e.dataTransfer.files?.[0]); };
-  const triggerScan    = () => fileInputRef.current?.click();
+  const handleDrop = (e) => { e.preventDefault(); processFile(e.dataTransfer.files?.[0]); };
+  const triggerScan = () => fileInputRef.current?.click();
 
   /* ── scan button ── */
   const ScanButton = ({ label }) => (
@@ -340,8 +385,8 @@ export default function DermAI() {
       <span style={isBusy ? { display: "inline-block", animation: "lumSpin 1s linear infinite" } : {}}>
         {isBusy ? "⏳" : (
           <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-            <circle cx="12" cy="8" r="5"/>
-            <path d="M3 21c0-4.418 4.03-8 9-8s9 3.582 9 8"/>
+            <circle cx="12" cy="8" r="5" />
+            <path d="M3 21c0-4.418 4.03-8 9-8s9 3.582 9 8" />
           </svg>
         )}
       </span>
@@ -363,11 +408,11 @@ export default function DermAI() {
 
   /* image displayed: blob during upload → CDN url otherwise */
   const displayImage = (isBusy && previewUrl) ? previewUrl : dashboardData.imageUrl;
-  const showImage    = !!displayImage;
+  const showImage = !!displayImage;
 
   /* ring maths */
   const circumference = 276.46;
-  const strokeDasharray  = `${dashboardData.overallScore * 2.76} ${circumference}`;
+  const strokeDasharray = `${dashboardData.overallScore * 2.76} ${circumference}`;
   const strokeDashoffset = circumference - (dashboardData.overallScore / 100) * circumference;
 
   /* user initials */
@@ -375,14 +420,45 @@ export default function DermAI() {
     .split(" ").map((w) => w[0]).slice(0, 2).join("").toUpperCase();
 
   /* ── initial loading (before any history arrives) ── */
-  if (isLoading && scanHistory.length === 0 && !previewUrl) {
+  if ((historyLoading || isLoading) && scanHistory.length === 0 && !previewUrl) {
     return (
       <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100vh", color: "var(--cream)", background: "var(--navy)" }}>
         <input type="file" ref={fileInputRef} onChange={handleFileChange} accept="image/*" style={{ display: "none" }} />
-        <div style={{ textAlign: "center" }}>
-          <p style={{ fontSize: "32px", animation: "lumPulse 1.5s ease-in-out infinite" }}>⏳</p>
-          <p style={{ marginTop: "12px", color: "rgba(245,240,235,0.5)" }}>Loading your scan history…</p>
+        <div style={{ textAlign: "center", animation: "fadeIn 0.3s ease" }}>
+          <div style={{
+            width: "56px", height: "56px", margin: "0 auto 20px",
+            borderRadius: "50%",
+            border: "3px solid rgba(255,62,127,0.15)",
+            borderTopColor: "#FF3E7F",
+            animation: "lumSpin 0.9s linear infinite",
+          }} />
+          <p
+            key={loadingMsgIdx}
+            style={{
+              marginTop: "4px",
+              color: "rgba(245,240,235,0.65)",
+              fontSize: "14px",
+              fontWeight: 500,
+              animation: "fadeIn 0.35s ease",
+            }}
+          >
+            {HISTORY_LOADING_MESSAGES[loadingMsgIdx]}
+          </p>
+          <div style={{ display: "flex", gap: "6px", justifyContent: "center", marginTop: "14px" }}>
+            {[0, 1, 2].map((i) => (
+              <div key={i} style={{
+                width: "5px", height: "5px", borderRadius: "50%",
+                background: i % 2 === 0 ? "#FF3E7F" : "#7B5EA7",
+                animation: `lumPulse 1.2s ease-in-out ${i * 0.15}s infinite`,
+              }} />
+            ))}
+          </div>
         </div>
+        <style>{`
+          @keyframes lumSpin  { to { transform: rotate(360deg); } }
+          @keyframes lumPulse { 0%,100% { opacity:1; } 50% { opacity:0.35; } }
+          @keyframes fadeIn   { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+        `}</style>
       </div>
     );
   }
@@ -411,7 +487,7 @@ export default function DermAI() {
      RENDER
   ───────────────────────────────────────────── */
   return (
-    <div className="shell" style={{ display: "block", minHeight: "100vh" }}>
+    <div className="shell" style={{ display: "block", minHeight: "100vh", animation: "dashFadeIn 0.35s ease" }}>
 
       <input
         type="file"
@@ -495,22 +571,48 @@ export default function DermAI() {
           </div>
         </div>
 
+        {/* ── HISTORY FETCH ERROR (non-blocking) ── */}
+        {historyError && !historyLoading && (
+          <div style={{
+            display: "flex", alignItems: "center", justifyContent: "space-between",
+            gap: "12px", padding: "10px 14px", marginBottom: "16px",
+            background: "rgba(255,62,127,0.08)", border: "1px solid rgba(255,62,127,0.25)",
+            borderRadius: "10px", animation: "fadeIn 0.3s ease",
+          }}>
+            <span style={{ fontSize: "12px", color: "rgba(245,240,235,0.75)" }}>
+              {typeof historyError === "string" && !historyError.includes("HTTP 404")
+                ? `⚠️ History fetch error: ${historyError}`
+                : "⚠️ No scan history available."
+              }
+            </span>
+            <button
+              onClick={() => currentUser?._id && fetchHistory(currentUser._id)}
+              style={{
+                fontSize: "11px", fontWeight: 700, color: "#FF3E7F",
+                background: "none", border: "none", cursor: "pointer", whiteSpace: "nowrap",
+              }}
+            >
+              Retry
+            </button>
+          </div>
+        )}
+
         {/* ── ACTION BAR ── */}
         <div className="actionBar">
           <ScanButton />
           <button className="btn btnViolet">
             <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-              <polyline points="7 10 12 15 17 10"/>
-              <line x1="12" y1="15" x2="12" y2="3"/>
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+              <polyline points="7 10 12 15 17 10" />
+              <line x1="12" y1="15" x2="12" y2="3" />
             </svg>
             Export Report
           </button>
           <button className="btn btnGhost">
             <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-              <path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/>
-              <polyline points="16 6 12 2 8 6"/>
-              <line x1="12" y1="2" x2="12" y2="15"/>
+              <path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8" />
+              <polyline points="16 6 12 2 8 6" />
+              <line x1="12" y1="2" x2="12" y2="15" />
             </svg>
             Share with Doctor
           </button>
@@ -577,7 +679,7 @@ export default function DermAI() {
               onClick={isBusy ? undefined : triggerScan}
               style={{ cursor: isBusy ? "not-allowed" : "pointer", opacity: isBusy ? 0.5 : 1 }}
             >
-              <div className="addThumbText">+<br/>Add</div>
+              <div className="addThumbText">+<br />Add</div>
             </div>
           </div>
 
@@ -706,7 +808,7 @@ export default function DermAI() {
               <div className="scoreRingCard">
                 <div className="ringWrap">
                   <svg className="ringSvg" width="110" height="110" viewBox="0 0 110 110">
-                    <circle cx="55" cy="55" r="44" fill="none" className="ringTrackCircle" strokeWidth="8"/>
+                    <circle cx="55" cy="55" r="44" fill="none" className="ringTrackCircle" strokeWidth="8" />
                     <circle cx="55" cy="55" r="44" fill="none"
                       className="ringProgressCircle" strokeWidth="8"
                       strokeDasharray={strokeDasharray}
@@ -715,8 +817,8 @@ export default function DermAI() {
                     />
                     <defs>
                       <linearGradient id="scoreGrad" x1="0" y1="0" x2="1" y2="1">
-                        <stop offset="0%" stopColor="#FF3E7F"/>
-                        <stop offset="100%" stopColor="#7B5EA7"/>
+                        <stop offset="0%" stopColor="#FF3E7F" />
+                        <stop offset="100%" stopColor="#7B5EA7" />
                       </linearGradient>
                     </defs>
                   </svg>
@@ -730,7 +832,7 @@ export default function DermAI() {
                   <p>{isBusy ? "Results appear here once the pipeline finishes." : (dashboardData.verdictDesc || "Upload a face portrait to initialise analysis.")}</p>
                   <div className="ageChip">
                     <svg width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                      <circle cx="12" cy="12" r="10"/><path d="M12 8v4l3 3"/>
+                      <circle cx="12" cy="12" r="10" /><path d="M12 8v4l3 3" />
                     </svg>
                     Skin Age Estimate:&nbsp;<strong className="amberText">{isBusy ? "—" : `${dashboardData.estimatedAge} yrs`}</strong>
                   </div>
@@ -743,12 +845,12 @@ export default function DermAI() {
               <div className="cardTitle">AI Metrics</div>
               <div className="metricsGrid">
                 {[
-                  { key: "acne",         label: "Acne Score",    accent: "Rose",   val: dashboardData.metrics.acne },
-                  { key: "wrinkle",      label: "Wrinkle Score", accent: "Violet", val: dashboardData.metrics.wrinkle },
-                  { key: "pigmentation", label: "Pigmentation",  accent: "Amber",  val: dashboardData.metrics.pigmentation },
-                  { key: "redness",      label: "Redness Score", accent: "Red",    val: dashboardData.metrics.redness },
-                  { key: "pores",        label: "Pores Score",   accent: "Blue",   val: dashboardData.metrics.pores },
-                  { key: "darkCircles",  label: "Dark Circles",  accent: "Green",  val: dashboardData.metrics.darkCircles },
+                  { key: "acne", label: "Acne Score", accent: "Rose", val: dashboardData.metrics.acne },
+                  { key: "wrinkle", label: "Wrinkle Score", accent: "Violet", val: dashboardData.metrics.wrinkle },
+                  { key: "pigmentation", label: "Pigmentation", accent: "Amber", val: dashboardData.metrics.pigmentation },
+                  { key: "redness", label: "Redness Score", accent: "Red", val: dashboardData.metrics.redness },
+                  { key: "pores", label: "Pores Score", accent: "Blue", val: dashboardData.metrics.pores },
+                  { key: "darkCircles", label: "Dark Circles", accent: "Green", val: dashboardData.metrics.darkCircles },
                 ].map(({ key, label, accent, val }) => (
                   <div key={key} className={`metricTile accent${accent}`}
                     style={{ opacity: isBusy ? 0.3 : 1, transition: "opacity 0.3s" }}>
@@ -773,9 +875,8 @@ export default function DermAI() {
             {activeScan && !isBusy && dashboardData.detectedConcerns.length > 0 ? (
               dashboardData.detectedConcerns.map((c) => (
                 <div key={c.id} className="concernRow">
-                  <div className={`concernDot dot${
-                    c.type === "acne" ? "Rose" : c.type === "dark_spot" ? "Amber" : c.type === "wrinkle" ? "Violet" : "Red"
-                  }`} />
+                  <div className={`concernDot dot${c.type === "acne" ? "Rose" : c.type === "dark_spot" ? "Amber" : c.type === "wrinkle" ? "Violet" : "Red"
+                    }`} />
                   <div>
                     <div className="concernName">{c.name}</div>
                     <div className="concernLocation">{c.location || "Location data unavailable"}</div>
@@ -799,11 +900,11 @@ export default function DermAI() {
             ) : (
               /* placeholder when no scan exists yet */
               [
-                { dot: "Rose",   name: "Acne (Pustule)",        loc: "Cheek region — upper right", conf: 87, tag: "top:22% left:58%" },
-                { dot: "Rose",   name: "Acne (Comedone)",       loc: "Cheek region — upper left",  conf: 74, tag: "top:35% left:25%" },
-                { dot: "Amber",  name: "Dark Spot (Post-acne)", loc: "Chin / lower central",       conf: 91, tag: "top:55% left:42%" },
-                { dot: "Violet", name: "Wrinkle (Fine line)",   loc: "Forehead — left horizontal", conf: 65, tag: "top:18% left:15%" },
-                { dot: "Red",    name: "Redness (Diffuse)",     loc: "Cheek — right, broad area",  conf: 79, tag: "top:42% left:60%" },
+                { dot: "Rose", name: "Acne (Pustule)", loc: "Cheek region — upper right", conf: 87, tag: "top:22% left:58%" },
+                { dot: "Rose", name: "Acne (Comedone)", loc: "Cheek region — upper left", conf: 74, tag: "top:35% left:25%" },
+                { dot: "Amber", name: "Dark Spot (Post-acne)", loc: "Chin / lower central", conf: 91, tag: "top:55% left:42%" },
+                { dot: "Violet", name: "Wrinkle (Fine line)", loc: "Forehead — left horizontal", conf: 65, tag: "top:18% left:15%" },
+                { dot: "Red", name: "Redness (Diffuse)", loc: "Cheek — right, broad area", conf: 79, tag: "top:42% left:60%" },
               ].map((c, i) => (
                 <div key={i} className="concernRow" style={{ opacity: 0.3 }}>
                   <div className={`concernDot dot${c.dot}`} />
@@ -848,11 +949,11 @@ export default function DermAI() {
                 ))
               ) : (
                 [
-                  { icon: "🧴", accent: "Rose",   title: "Apply SPF 50+ sunscreen daily",    desc: "Prevents further pigmentation from UV exposure" },
-                  { icon: "🚫", accent: "Violet", title: "Avoid physical exfoliation",         desc: "Reduces redness irritation on reactive zones" },
-                  { icon: "💧", accent: "Amber",  title: "Use niacinamide serum (5–10%)",      desc: "Addresses pores, redness, and pigmentation" },
-                  { icon: "🌙", accent: "Rose",   title: "Retinol 0.025% at night",            desc: "Gentle start for fine lines and cell turnover" },
-                  { icon: "🩺", accent: "Violet", title: "Consult dermatologist for redness",  desc: "Rosacea screening recommended within 30 days" },
+                  { icon: "🧴", accent: "Rose", title: "Apply SPF 50+ sunscreen daily", desc: "Prevents further pigmentation from UV exposure" },
+                  { icon: "🚫", accent: "Violet", title: "Avoid physical exfoliation", desc: "Reduces redness irritation on reactive zones" },
+                  { icon: "💧", accent: "Amber", title: "Use niacinamide serum (5–10%)", desc: "Addresses pores, redness, and pigmentation" },
+                  { icon: "🌙", accent: "Rose", title: "Retinol 0.025% at night", desc: "Gentle start for fine lines and cell turnover" },
+                  { icon: "🩺", accent: "Violet", title: "Consult dermatologist for redness", desc: "Rosacea screening recommended within 30 days" },
                 ].map((r, i) => (
                   <div key={i} className="recItem" style={{ opacity: isBusy ? 0.2 : 0.35 }}>
                     <div className={`recIcon recIcon${r.accent}`}>{r.icon}</div>
@@ -878,9 +979,13 @@ export default function DermAI() {
           90%  { opacity: 1; }
           100% { top: 100%; opacity: 0; }
         }
+        @keyframes fadeIn    { from { opacity: 0; } to { opacity: 1; } }
+        @keyframes dashFadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
         .imageWrapper:hover .image-rescan-hint { opacity: 1 !important; }
-        .historyThumb { transition: transform 0.15s ease, box-shadow 0.15s ease; }
+        .historyThumb { transition: transform 0.15s ease, box-shadow 0.15s ease, opacity 0.2s ease; animation: fadeIn 0.25s ease; }
         .historyThumb:hover { transform: translateY(-2px); }
+        .historyThumb img { transition: opacity 0.25s ease, filter 0.2s ease; }
+        .card { animation: fadeIn 0.3s ease; }
       `}</style>
     </div>
   );

@@ -41,6 +41,14 @@ export async function POST(request) {
 
     return NextResponse.json({ success: true, analysis: JSON.parse(response.text.trim()) });
   } catch (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    console.error("Ingredient analysis error:", error);
+    return NextResponse.json(
+      { 
+        success: false,
+        message: error.message || "Failed to analyze ingredients",
+        error: process.env.NODE_ENV === "development" ? error.message : undefined
+      },
+      { status: 500 }
+    );
   }
 }

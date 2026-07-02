@@ -1,21 +1,23 @@
 import { NextResponse } from "next/server";
 import { connectToDatabase } from "@/lib/db";
+import { verifyToken } from "@/lib/auth";
 import FacialAnalysis from "@/lib/models/facialAnalysis";
 
 export async function GET(request) {
   try {
     await connectToDatabase();
 
-    // 1. Extract userId from the search params query string
-    const { searchParams } = new URL(request.url);
-    const userId = searchParams.get("userId");
-
-    if (!userId) {
+    // 1. Extract userId from JWT token (never trust frontend)
+    const token = request.cookies.get("token")?.value;
+    const session = verifyToken(token);
+    if (!session) {
       return NextResponse.json(
-        { success: false, error: "Missing required parameter: userId" },
-        { status: 400 }
+        { success: false, error: "Unauthorized access" },
+        { status: 401 }
       );
     }
+
+    const userId = session.userId;
 
     // 2. Query historical logs for this user sorted chronologically (Newest First)
     // We filter for "completed" scans to avoid pulling half-baked items
@@ -35,9 +37,13 @@ export async function GET(request) {
     });
 
   } catch (error) {
-    console.error("GET Report Route Error:", error);
+    console.error("Get analysis history error:", error);
     return NextResponse.json(
-      { success: false, error: error.message },
+      { 
+        success: false,
+        message: error.message || "Failed to fetch analysis history",
+        error: process.env.NODE_ENV === "development" ? error.message : undefined
+      },
       { status: 500 }
     );
   }

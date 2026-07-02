@@ -72,10 +72,21 @@ export async function PUT(request) {
     return NextResponse.json({
       success: true,
       message: "Profile updated successfully",
-      user: updatedUser
+      user: {
+        ...updatedUser.toObject(),
+        id: updatedUser._id.toString()
+      }
     }, { status: 200 });
 
   } catch (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    console.error("User profile update error:", error);
+    return NextResponse.json(
+      { 
+        success: false,
+        message: error.message || "Failed to update profile",
+        error: process.env.NODE_ENV === "development" ? error.message : undefined
+      },
+      { status: 500 }
+    );
   }
 }

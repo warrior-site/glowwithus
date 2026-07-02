@@ -56,6 +56,14 @@ export async function GET(request) {
     }, { status: 200 });
 
   } catch (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    console.error("User report error:", error);
+    return NextResponse.json(
+      { 
+        success: false,
+        message: error.message || "Failed to generate user report",
+        error: process.env.NODE_ENV === "development" ? error.message : undefined
+      },
+      { status: 500 }
+    );
   }
 }

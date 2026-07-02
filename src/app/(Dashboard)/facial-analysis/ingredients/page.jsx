@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useCallback } from "react";
+import { useIngredientsStore } from "@/stores/useIngredientsStore";
 
 const THEME = {
   navy: "#0A0A1A",
@@ -8,37 +9,6 @@ const THEME = {
   acidRose: "#FF3E7F",
   violet: "#7B5EA7",
   amber: "#E8A838",
-};
-
-// --- INCI Safety Database (subset) ---
-const SAFETY_DB = {
-  "ALCOHOL DENAT": { comedogenicity: 0, irritancy: 4, flag: "danger", note: "Strong irritant; disrupts skin barrier" },
-  "FRAGRANCE": { comedogenicity: 1, irritancy: 4, flag: "danger", note: "Common allergen & sensitizer" },
-  "PARFUM": { comedogenicity: 1, irritancy: 4, flag: "danger", note: "Common allergen & sensitizer" },
-  "SODIUM LAURYL SULFATE": { comedogenicity: 0, irritancy: 5, flag: "danger", note: "Aggressive surfactant" },
-  "SLS": { comedogenicity: 0, irritancy: 5, flag: "danger", note: "Aggressive surfactant" },
-  "PARABENS": { comedogenicity: 0, irritancy: 2, flag: "warning", note: "Endocrine disruption concern" },
-  "METHYLPARABEN": { comedogenicity: 0, irritancy: 2, flag: "warning", note: "Endocrine disruption concern" },
-  "PROPYLPARABEN": { comedogenicity: 0, irritancy: 2, flag: "warning", note: "Endocrine disruption concern" },
-  "COCONUT OIL": { comedogenicity: 4, irritancy: 0, flag: "warning", note: "High comedogenic rating" },
-  "ISOPROPYL MYRISTATE": { comedogenicity: 5, irritancy: 1, flag: "danger", note: "Highly comedogenic" },
-  "LANOLIN": { comedogenicity: 1, irritancy: 2, flag: "warning", note: "Potential allergen" },
-  "RETINOL": { comedogenicity: 0, irritancy: 3, flag: "warning", note: "Photosensitizing; use PM only" },
-  "ASCORBIC ACID": { comedogenicity: 0, irritancy: 2, flag: "info", note: "Vitamin C — pH sensitive" },
-  "NIACINAMIDE": { comedogenicity: 0, irritancy: 0, flag: null, note: "Excellent skin-compatible" },
-  "HYALURONIC ACID": { comedogenicity: 0, irritancy: 0, flag: null, note: "Non-comedogenic humectant" },
-  "CERAMIDE": { comedogenicity: 0, irritancy: 0, flag: null, note: "Barrier-supportive" },
-  "GLYCERIN": { comedogenicity: 0, irritancy: 0, flag: null, note: "Safe humectant" },
-  "ZINC OXIDE": { comedogenicity: 0, irritancy: 0, flag: null, note: "Safe physical UV filter" },
-  "TITANIUM DIOXIDE": { comedogenicity: 0, irritancy: 0, flag: null, note: "Safe physical UV filter" },
-  "WATER": { comedogenicity: 0, irritancy: 0, flag: null, note: "Inert solvent" },
-  "AQUA": { comedogenicity: 0, irritancy: 0, flag: null, note: "Inert solvent" },
-  "DIMETHICONE": { comedogenicity: 1, irritancy: 0, flag: null, note: "Occlusive silicone" },
-  "CYCLOPENTASILOXANE": { comedogenicity: 0, irritancy: 0, flag: null, note: "Light silicone carrier" },
-  "SALICYLIC ACID": { comedogenicity: 0, irritancy: 2, flag: "info", note: "BHA — avoid around eyes" },
-  "BENZOYL PEROXIDE": { comedogenicity: 0, irritancy: 3, flag: "warning", note: "Strong oxidizer; bleaches fabric" },
-  "LIMONENE": { comedogenicity: 0, irritancy: 3, flag: "warning", note: "Oxidizes to allergen on air exposure" },
-  "LINALOOL": { comedogenicity: 0, irritancy: 3, flag: "warning", note: "Fragrance allergen (EU regulated)" },
 };
 
 const SAMPLE_INGREDIENTS = "Aqua, Niacinamide, Glycerin, Dimethicone, Isopropyl Myristate, Fragrance, Methylparaben, Retinol, Zinc Oxide, Limonene";
@@ -89,7 +59,7 @@ function FlagChip({ flag }) {
     warning: { bg: "rgba(232,168,56,0.14)", border: THEME.amber, text: THEME.amber, label: "◈ MOD" },
     info: { bg: "rgba(123,94,167,0.14)", border: THEME.violet, text: THEME.violet, label: "◉ NOTE" },
   };
-  const c = map[flag];
+  const c = map[flag] || { bg: "rgba(245,240,235,0.1)", border: THEME.offWhite, text: THEME.offWhite, label: flag.toUpperCase() };
   return (
     <span style={{
       fontSize: 8, fontWeight: 700, letterSpacing: "0.1em",
@@ -184,6 +154,13 @@ function Tab({ active, onClick, children }) {
   );
 }
 
+// Normalize a string for case/whitespace-insensitive comparison.
+// The backend may return `name`/`aliases` in whatever case they were
+// actually stored in Mongo (Mongoose's `uppercase: true` setter only
+// fires on save, not on every historical record), so the frontend
+// must not assume the backend value is uppercase.
+const norm = (s) => String(s || "").trim().toUpperCase();
+
 export default function IngredientSafetyAnalyzer() {
   const [inputText, setInputText] = useState(SAMPLE_INGREDIENTS);
   const [analyzed, setAnalyzed] = useState(null);
@@ -192,24 +169,77 @@ export default function IngredientSafetyAnalyzer() {
   const [altFilter, setAltFilter] = useState("vegan");
   const [altError, setAltError] = useState(null);
   const [copied, setCopied] = useState(false);
-  const [activeTab, setActiveTab] = useState("scoreboard"); // scoreboard | alternatives | compiler
+  const [activeTab, setActiveTab] = useState("scoreboard");
+  const [analyzeError, setAnalyzeError] = useState(null);
 
-  const analyze = useCallback(() => {
+  // Connect backend store actions
+  const matchIngredients = useIngredientsStore((state) => state.matchIngredients);
+  const isStoreLoading = useIngredientsStore((state) => state.isLoading);
+  const storeError = useIngredientsStore((state) => state.error);
+
+  const analyze = useCallback(async () => {
     const raw = inputText.trim();
     if (!raw) return;
+
+    setAnalyzeError(null);
+
+    // Split the ingredients into an array of strings
     const list = raw.split(/,|;|\n/).map(s => s.trim()).filter(Boolean);
-    const results = list.map(name => {
-      const key = name.toUpperCase().replace(/[^A-Z0-9 ]/g, "");
-      const match = Object.entries(SAFETY_DB).find(([k]) => key.includes(k) || k.includes(key));
-      if (match) {
-        return { name, ...match[1], matched: true };
+    if (list.length === 0) return;
+
+    // Request analysis mapping from our Mongoose backend database
+    const backendResults = await matchIngredients(list);
+    const matchedResults = Array.isArray(backendResults) ? backendResults : [];
+
+    // Build a normalized lookup so matching is case/whitespace-insensitive
+    // regardless of how names were actually cased in the database.
+    const byNormalizedName = new Map();
+    matchedResults.forEach((doc) => {
+      if (!doc) return;
+      if (doc.name) byNormalizedName.set(norm(doc.name), doc);
+      if (Array.isArray(doc.aliases)) {
+        doc.aliases.forEach((alias) => byNormalizedName.set(norm(alias), doc));
       }
-      // Unknown: mild defaults
-      return { name, comedogenicity: 0, irritancy: 0, flag: null, note: "No data — likely safe", matched: false };
     });
+
+    // Ensure every checked item maintains presentation logic even if backend
+    // has no record for it — every input ingredient always renders a row.
+    const results = list.map((name) => {
+      const match = byNormalizedName.get(norm(name));
+
+      if (match) {
+        return {
+          name,
+          comedogenicity: match.comedogenicity ?? 0,
+          irritancy: match.irritancy ?? 0,
+          flag: match.safetyFlag ?? null,
+          note: match.note || `Category: ${match.category || "other"}`,
+          skinCompatibility: match.skinCompatibility || {},
+          pregnancySafe: match.pregnancySafe ?? true,
+          benefits: match.benefits || [],
+          concerns: match.concerns || [],
+          matched: true,
+        };
+      }
+
+      // Fallback configuration if not registered in backend database
+      return {
+        name,
+        comedogenicity: 0,
+        irritancy: 0,
+        flag: null,
+        note: "No matching record — assuming baseline properties",
+        skinCompatibility: {},
+        pregnancySafe: true,
+        benefits: [],
+        concerns: [],
+        matched: false,
+      };
+    });
+
     setAnalyzed(results);
     setActiveTab("scoreboard");
-  }, [inputText]);
+  }, [inputText, matchIngredients]);
 
   const fetchAlternatives = useCallback(async (filter) => {
     setAltLoading(true);
@@ -243,6 +273,7 @@ export default function IngredientSafetyAnalyzer() {
   // Derive scoreboard stats
   const dangerCount = analyzed?.filter(i => i.flag === "danger").length || 0;
   const warningCount = analyzed?.filter(i => i.flag === "warning").length || 0;
+  const unmatchedCount = analyzed?.filter(i => !i.matched).length || 0;
   const avgComedogenicity = analyzed ? Math.round((analyzed.reduce((s, i) => s + i.comedogenicity, 0) / analyzed.length) * 10) / 10 : null;
   const avgIrritancy = analyzed ? Math.round((analyzed.reduce((s, i) => s + i.irritancy, 0) / analyzed.length) * 10) / 10 : null;
 
@@ -325,6 +356,7 @@ ${analyzed.map(i => i.name).join(", ")}
             value={inputText}
             onChange={e => setInputText(e.target.value)}
             rows={3}
+            disabled={isStoreLoading}
             placeholder="e.g. Aqua, Niacinamide, Glycerin, Fragrance, Retinol..."
             style={{
               width: "100%",
@@ -350,6 +382,7 @@ ${analyzed.map(i => i.name).join(", ")}
           <button
             className="derm-analyze-btn"
             onClick={analyze}
+            disabled={isStoreLoading}
             style={{
               background: "rgba(255,62,127,0.12)",
               border: `1px solid ${THEME.acidRose}55`,
@@ -359,25 +392,51 @@ ${analyzed.map(i => i.name).join(", ")}
               fontSize: 11,
               fontWeight: 700,
               letterSpacing: "0.08em",
-              cursor: "pointer",
+              cursor: isStoreLoading ? "not-allowed" : "pointer",
               transition: "background 0.2s, border-color 0.2s",
               fontFamily: "inherit",
+              opacity: isStoreLoading ? 0.6 : 1
             }}
           >
-            ◎ RUN SAFETY AUDIT
+            {isStoreLoading ? "◎ PARSING DATA..." : "◎ RUN SAFETY AUDIT"}
           </button>
 
-          {analyzed && (
+          {analyzed && !isStoreLoading && (
             <div style={{ display: "flex", gap: 12, fontSize: 10 }}>
               <span style={{ color: THEME.acidRose }}>⚠ {dangerCount} HIGH-RISK</span>
               <span style={{ color: THEME.amber }}>◈ {warningCount} WARNINGS</span>
+              {unmatchedCount > 0 && (
+                <span style={{ opacity: 0.5 }}>? {unmatchedCount} UNMATCHED</span>
+              )}
               <span style={{ opacity: 0.4 }}>{analyzed.length} TOTAL</span>
             </div>
           )}
         </div>
 
-        {/* Tabs */}
-        {analyzed && (
+        {/* Display Global Error Handler From Backend */}
+        {(storeError || analyzeError) && (
+          <div style={{ fontSize: 11, color: THEME.acidRose, padding: "10px 12px", background: "rgba(255,62,127,0.08)", borderRadius: 8, marginBottom: 16 }}>
+            Error processing request: {storeError || analyzeError}
+          </div>
+        )}
+
+        {/* Global Skeleton Content Loader */}
+        {isStoreLoading && (
+          <div style={{ padding: "10px 0" }}>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 16 }}>
+              <Skeleton h={58} />
+              <Skeleton h={58} />
+            </div>
+            <Skeleton h={24} w="40%" mb={16} />
+            <Skeleton h={35} mb={8} />
+            <Skeleton h={35} mb={8} />
+            <Skeleton h={35} mb={8} />
+            <Skeleton h={35} mb={8} />
+          </div>
+        )}
+
+        {/* Tabs and Data (Render only when not loading and records exist) */}
+        {analyzed && !isStoreLoading && (
           <>
             <div style={{ display: "flex", gap: 6, marginBottom: 16 }}>
               <Tab active={activeTab === "scoreboard"} onClick={() => handleTabChange("scoreboard")}>SCOREBOARD</Tab>
@@ -416,7 +475,7 @@ ${analyzed.map(i => i.name).join(", ")}
                   <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11 }}>
                     <thead>
                       <tr style={{ borderBottom: "1px solid rgba(245,240,235,0.06)" }}>
-                        {["INGREDIENT", "COMEDOGENICITY", "IRRITANCY", "FLAG", "NOTE"].map(h => (
+                        {["INGREDIENT", "COMEDOGENICITY", "IRRITANCY", "FLAG", "INFO & SKIN TARGETS"].map(h => (
                           <th key={h} style={{
                             fontSize: 8, letterSpacing: "0.1em", opacity: 0.35,
                             padding: "6px 8px", textAlign: "left", fontWeight: 600, color: THEME.offWhite,
@@ -441,6 +500,12 @@ ${analyzed.map(i => i.name).join(", ")}
                         >
                           <td style={{ padding: "8px 8px", fontFamily: "monospace", fontSize: 10, maxWidth: 160, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                             {ing.name}
+                            {!ing.matched && (
+                              <div style={{ fontSize: 7, color: THEME.offWhite, opacity: 0.35, marginTop: 2 }}>UNMATCHED</div>
+                            )}
+                            {!ing.pregnancySafe && (
+                              <div style={{ fontSize: 7, color: THEME.acidRose, marginTop: 2, fontWeight: 700 }}>✖ PREGNANCY UNSAFE</div>
+                            )}
                           </td>
                           <td style={{ padding: "8px 8px" }}>
                             <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
@@ -456,7 +521,10 @@ ${analyzed.map(i => i.name).join(", ")}
                           </td>
                           <td style={{ padding: "8px 8px" }}><FlagChip flag={ing.flag} /></td>
                           <td style={{ padding: "8px 8px", fontSize: 9, opacity: 0.5, maxWidth: 180, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                            {ing.note}
+                            <span>{ing.note}</span>
+                            {ing.benefits && ing.benefits.length > 0 && (
+                              <span style={{ color: THEME.violet, marginLeft: 4 }}>({ing.benefits.join(", ")})</span>
+                            )}
                           </td>
                         </tr>
                       ))}
@@ -602,7 +670,7 @@ ${analyzed.map(i => i.name).join(", ")}
         )}
 
         {/* Idle state */}
-        {!analyzed && (
+        {!analyzed && !isStoreLoading && (
           <div style={{ textAlign: "center", opacity: 0.3, padding: "20px 0" }}>
             <div style={{ fontSize: 32, marginBottom: 8 }}>🧪</div>
             <div style={{ fontSize: 11, lineHeight: 1.6 }}>

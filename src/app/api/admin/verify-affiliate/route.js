@@ -35,8 +35,22 @@ export async function PATCH(request) {
       { new: true }
     ).select("-password");
 
-    return NextResponse.json({ success: true, data: updatedUser });
+    return NextResponse.json({
+      success: true,
+      data: {
+        ...updatedUser.toObject(),
+        id: updatedUser._id.toString()
+      }
+    });
   } catch (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    console.error("Affiliate verification error:", error);
+    return NextResponse.json(
+      { 
+        success: false,
+        message: error.message || "Failed to verify affiliate",
+        error: process.env.NODE_ENV === "development" ? error.message : undefined
+      },
+      { status: 500 }
+    );
   }
 }
